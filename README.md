@@ -6,8 +6,8 @@ Author: Jung
 
 - [프로젝트 환경](#프로젝트-환경)
 - [재고시스템 만들어보기](#재고시스템-만들어보기)
-  - [현재와 같은 상황에서 동시성 문제점](#현재와-같은-상황에서-동시성-문제점)
-  - [Race Condition](#race-condition)
+	- [현재와 같은 상황에서 동시성 문제점](#현재와-같은-상황에서-동시성-문제점)
+	- [Race Condition](#race-condition)
 - [Synchronized 사용하기](#synchronized-사용하기)
 - [Database 사용하기](#database-사용하기)
 - [Redis 사용하기](#redis-사용하기)
@@ -110,9 +110,9 @@ class StockServiceTest {
 }
 ```
 
-|                                        테스트 결과 확인                                        |
-| :--------------------------------------------------------------------------------------------: |
-| ![테스트 결과 확인](../res/../Study_How_To_Solve_Concurrency_Issuses/res/_02_test_success.png) |
+|                테스트 결과 확인                 |
+| :---------------------------------------------: |
+| ![테스트 결과 확인](./res/_02_test_success.png) |
 
 </br>
 
@@ -264,9 +264,9 @@ public class StockService {
 	}
 ```
 
-|                                        Test 결과                                        |
-| :-------------------------------------------------------------------------------------: |
-| ![Test 결과](../res/../Study_How_To_Solve_Concurrency_Issuses/res/_03_synchronized.png) |
+|                Test 실패                 |
+| :--------------------------------------: |
+| ![Test 결과](./res/_03_synchronized.png) |
 
 </br>
 
@@ -334,9 +334,9 @@ public class StockService {
 
 ```
 
-|                                        Test 성공                                         |
-| :--------------------------------------------------------------------------------------: |
-| ![Test 성공](../Study_How_To_Solve_Concurrency_Issuses/res/_03_synchronized_success.png) |
+|                    Test 성공                     |
+| :----------------------------------------------: |
+| ![Test 성공](./res/_03_synchronized_success.png) |
 
 </br>
 
