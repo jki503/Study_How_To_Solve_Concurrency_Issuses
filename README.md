@@ -6,10 +6,14 @@ Author: Jung
 
 - [프로젝트 환경](#프로젝트-환경)
 - [재고시스템 만들어보기](#재고시스템-만들어보기)
-	- [현재와 같은 상황에서 동시성 문제점](#현재와-같은-상황에서-동시성-문제점)
-	- [Race Condition](#race-condition)
+  - [현재와 같은 상황에서 동시성 문제점](#현재와-같은-상황에서-동시성-문제점)
+  - [Race Condition](#race-condition)
 - [Synchronized 사용하기](#synchronized-사용하기)
-- [Database 사용하기](#database-사용하기)
+  - [Synchronized 문제점](#synchronized-문제점)
+- [Database 사용하기 - MySQL](#database-사용하기---mysql)
+  - [Pessimistic Lock 활용해보기](#pessimistic-lock-활용해보기)
+  - [Optimistic Lock 활용해보기](#optimistic-lock-활용해보기)
+  - [Named Lock 활용해보기](#named-lock-활용해보기)
 - [Redis 사용하기](#redis-사용하기)
 - [마무리 - MySQL과 Redis 비교](#마무리---mysql과-redis-비교)
 
@@ -340,7 +344,113 @@ public class StockService {
 
 </br>
 
-## Database 사용하기
+### Synchronized 문제점
+
+</br>
+
+|                    Synchronized 문제점                     |
+| :--------------------------------------------------------: |
+| ![Synchronized 문제점](./res/_03_synchronized_problem.png) |
+
+</br>
+
+> 자바에서 synchronized는 하나의 프로세스 안에서만 보장이 된다.  
+> 서버가 한 대일 경우 데이터의 접근은 괜찮겠지만  
+> 서버가 N대일 경우 공유하는 데이터에대해  
+> 다수의 서버가 접근 가능하여 동시성 문제가 발생할 수 있다.
+
+</br>
+
+## Database 사용하기 - MySQL
+
+</br>
+
+- 참조
+  - [MySQL doc](https://dev.mysql.com/doc/refman/8.0/en/)
+  - [MySQL Locking Functions](https://dev.mysql.com/doc/refman/8.0/en/locking-functions.html)
+  - [MySQL Metadata Locking](https://dev.mysql.com/doc/refman/8.0/en/metadata-locking.html)
+
+</br>
+
+- Pessimistic Lock(비관적 락)
+  - 실제로 데이터에 Lock을 걸어서 정합성을 맞추는 방법이다.
+  - exclusive lock을 걸게 디면 다른 트랜잭션에서는 lock이 해결 되기 전에 데이터를 가져갈 수 없게 된다.
+  - 데드락이 발생할 수 있기 때문에 주의하여 사용해야 한다.
+
+|                Pessimistic Lock(비관적 락)                |
+| :-------------------------------------------------------: |
+| ![Pessimistic Lock(비관적 락)](./res/_04_pessimistic.png) |
+
+서버가 여러대가 있을때 서버1이 락을 걸고 데이터를 가져가게 되면
+서버 234는 서버1이 락을 해제하기 전까지는 데이터를 가져갈 수 없다.
+데이터에는 락을 가진 쓰레드만 접근이 가능해지기 때문에 문제를 해결할 수 있다.
+
+</br>
+
+- Optimisitic Lock(낙관적 락)
+  - 실제로 Lock을 이용하지 않고 버전을 이용함으로써 정합성을 맞추는 방법이다.
+  - 먼저 데이터를 읽은 후에 update 수행할 때 현재 내가 읽은 버전이 맞는지 확인하여 업데이트 한다.
+  - 내가 읽은 버전에서 수정사항이 생겼을 경우에는 application에서 다시 읽은 후에 작업을 수행해야 한다.
+
+|                  Optimistic Lock(낙관적 락)                   |
+| :-----------------------------------------------------------: |
+| ![Optimistic Lock(낙관적 락)](.res/../res/_04_optimistic.png) |
+
+서버 1과 서버 2가 데이터 베이스가 version1인 로우를 조회한다
+서버1이 조회한 로우에 대하 업데이트쿼리 실행한다
+그 후 실제 데이터는 version = 2가 된다.
+
+|                   Optimistic Lock(낙관적 락)                    |
+| :-------------------------------------------------------------: |
+| ![Optimistic Lock(낙관적 락)2](.res/../res/_04_optimistic2.png) |
+
+서버 2는 이때 version1에 대해 업데이트에 실패한다.
+왜냐하면 현재 db에서 실제 version은 2이기때문이다.
+update가 실패하게 되면서 실제 애플리케이션에서 다시 조회하고
+업데이트를 수행하는 로직이 실행한다.
+
+</br>
+
+- Named Lock
+  - 이름을 가진 metadata locking이다.
+  - 이름을 가진 lock을 힉득한 후 해제할때까지 다른 세션은 이 lock을 획득할 수 없다.
+  - 주의할점으로 transaction이 종료될 때 lock이 자동으로 해제 되지 않는다. 별도의 명령어로 해제를 수행해주거나 timeout이 끝나야 해제된다.
+
+</br>
+
+### Pessimistic Lock 활용해보기
+
+</br>
+
+- 상황
+
+|                    Thread-1                     |        Stock         |                    Thread-2                     |
+| :---------------------------------------------: | :------------------: | :---------------------------------------------: |
+|        select \* from stock where id = 1        | {id: 1, quantity: 5} |                                                 |
+| update set quantity = 4 from stock where id = 1 | {id: 1, quantity: 4} |                                                 |
+|                                                 | {id: 1, quantity: 4} |                                                 |
+|                                                 | {id: 1, quantity: 3} |        select \* from stock where id = 1        |
+|                                                 |                      | update set quantity = 3 from stock where id = 1 |
+
+</br>
+
+쓰레드 1이 락을 걸고 데이터를 가져온다.
+이때 쓰레드 2가 락을 획득하려고 하지만, thread 1이 점유중이므로 대기한다
+쓰레드 1의 작업이 모두 종료되면 쓰레드 2가 락을 점유할 수 있게 된다
+
+</br>
+
+### Optimistic Lock 활용해보기
+
+</br>
+
+</br>
+
+### Named Lock 활용해보기
+
+</br>
+
+</br>
 
 ## Redis 사용하기
 
