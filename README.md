@@ -392,17 +392,17 @@ public class StockService {
   - 먼저 데이터를 읽은 후에 update 수행할 때 현재 내가 읽은 버전이 맞는지 확인하여 업데이트 한다.
   - 내가 읽은 버전에서 수정사항이 생겼을 경우에는 application에서 다시 읽은 후에 작업을 수행해야 한다.
 
-|                  Optimistic Lock(낙관적 락)                   |
-| :-----------------------------------------------------------: |
-| ![Optimistic Lock(낙관적 락)](.res/../res/_04_optimistic.png) |
+|               Optimistic Lock(낙관적 락)                |
+| :-----------------------------------------------------: |
+| ![Optimistic Lock(낙관적 락)](./res/_04_optimistic.png) |
 
 서버 1과 서버 2가 데이터 베이스가 version1인 로우를 조회한다
 서버1이 조회한 로우에 대하 업데이트쿼리 실행한다
 그 후 실제 데이터는 version = 2가 된다.
 
-|                   Optimistic Lock(낙관적 락)                    |
-| :-------------------------------------------------------------: |
-| ![Optimistic Lock(낙관적 락)2](.res/../res/_04_optimistic2.png) |
+|                Optimistic Lock(낙관적 락)                 |
+| :-------------------------------------------------------: |
+| ![Optimistic Lock(낙관적 락)2](./res/_04_optimistic2.png) |
 
 서버 2는 이때 version1에 대해 업데이트에 실패한다.
 왜냐하면 현재 db에서 실제 version은 2이기때문이다.
@@ -538,9 +538,9 @@ class StockServiceTest {
 
 </br>
 
-|                                          Pessimistic Lock 테스트 결과 확인 해보기                                          |
-| :------------------------------------------------------------------------------------------------------------------------: |
-| ![Pessimistic Lock 테스트 결과 확인 해보기](../res/../Study_How_To_Solve_Concurrency_Issuses/res/_04_pessimistic_test.png) |
+|                  Pessimistic Lock 테스트 결과 확인 해보기                   |
+| :-------------------------------------------------------------------------: |
+| ![Pessimistic Lock 테스트 결과 확인 해보기](./res/_04_pessimistic_test.png) |
 
 > 데이터 정합성을 보장해주는 것을 확인할 수 있다.
 
@@ -562,9 +562,9 @@ class StockServiceTest {
 
 > 실제로 락을 사용하지 않고 버전을 사용하여 락을 사용하는 것
 
-|                                        예제 그림                                         |
-| :--------------------------------------------------------------------------------------: |
-| ![예제 그림](../res/../Study_How_To_Solve_Concurrency_Issuses/res/_04_optimistic_ex.png) |
+|                 예제 그림                 |
+| :---------------------------------------: |
+| ![예제 그림](./res/_04_optimistic_ex.png) |
 
 - server1과 server2가 version 1 상태인 stock 데이터를 가져간다
 - server1이 update 할 때 version을 2로 만든다
@@ -724,11 +724,11 @@ class OptimisticLockStockFacadeTest {
 }
 ```
 
-- 마지막을 테스트
+- 마지막 테스트 코드 및 검증
 
-|                                          Optimisitic Lock 테스트 결과 확인                                          |
-| :-----------------------------------------------------------------------------------------------------------------: |
-| ![Optimisitic Lock 테스트 결과 확인](../res/../Study_How_To_Solve_Concurrency_Issuses/res/_04_optimisitic_test.png) |
+|                  Optimisitic Lock 테스트 결과 확인                   |
+| :------------------------------------------------------------------: |
+| ![Optimisitic Lock 테스트 결과 확인](./res/_04_optimisitic_test.png) |
 
 </br>
 
