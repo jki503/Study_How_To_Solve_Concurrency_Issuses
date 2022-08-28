@@ -1,11 +1,11 @@
-package com.devj.stock.service;
+package com.devj.stock.facade;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,15 +13,16 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
-import com.devj.stock.Sample;
 import com.devj.stock.domain.Stock;
 import com.devj.stock.repository.StockRepository;
+import com.devj.stock.service.OptimisticLockStockService;
+import com.devj.stock.service.PessimisticLockStockService;
 
 @SpringBootTest
-class StockServiceTest {
+class OptimisticLockStockFacadeTest {
 
 	@Autowired
-	private PessimisticLockStockService stockService;
+	private OptimisticLockStockFacade stockService;
 
 	@Autowired
 	private StockRepository stockRepository;
@@ -38,17 +39,6 @@ class StockServiceTest {
 	}
 
 	@Test
-	public void 재고감소_확인(){
-		stockService.decrease(1L, 1L);
-
-		// 100 - 1 = 99
-
-		Stock stock = stockRepository.findById(1L).orElseThrow();
-
-		assertThat(stock.getQuantity()).isEqualTo(99L);
-	}
-	
-	@Test
 	public void 동시에_100개의_요청() throws InterruptedException {
 		int threadCount = 100;
 		ExecutorService executorService = Executors.newFixedThreadPool(32);
@@ -59,8 +49,9 @@ class StockServiceTest {
 				() -> {
 					try {
 						stockService.decrease(1L, 1L);
-					}
-					finally {
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					} finally {
 						latch.countDown();
 					}
 				});

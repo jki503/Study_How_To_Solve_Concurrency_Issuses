@@ -6,14 +6,14 @@ Author: Jung
 
 - [프로젝트 환경](#프로젝트-환경)
 - [재고시스템 만들어보기](#재고시스템-만들어보기)
-  - [현재와 같은 상황에서 동시성 문제점](#현재와-같은-상황에서-동시성-문제점)
-  - [Race Condition](#race-condition)
+	- [현재와 같은 상황에서 동시성 문제점](#현재와-같은-상황에서-동시성-문제점)
+	- [Race Condition](#race-condition)
 - [Synchronized 사용하기](#synchronized-사용하기)
-  - [Synchronized 문제점](#synchronized-문제점)
+	- [Synchronized 문제점](#synchronized-문제점)
 - [Database 사용하기 - MySQL](#database-사용하기---mysql)
-  - [Pessimistic Lock 활용해보기](#pessimistic-lock-활용해보기)
-  - [Optimistic Lock 활용해보기](#optimistic-lock-활용해보기)
-  - [Named Lock 활용해보기](#named-lock-활용해보기)
+	- [Pessimistic Lock 활용해보기](#pessimistic-lock-활용해보기)
+	- [Optimistic Lock 활용해보기](#optimistic-lock-활용해보기)
+	- [Named Lock 활용해보기](#named-lock-활용해보기)
 - [Redis 사용하기](#redis-사용하기)
 - [마무리 - MySQL과 Redis 비교](#마무리---mysql과-redis-비교)
 
@@ -434,15 +434,307 @@ update가 실패하게 되면서 실제 애플리케이션에서 다시 조회�
 
 </br>
 
-쓰레드 1이 락을 걸고 데이터를 가져온다.
-이때 쓰레드 2가 락을 획득하려고 하지만, thread 1이 점유중이므로 대기한다
-쓰레드 1의 작업이 모두 종료되면 쓰레드 2가 락을 점유할 수 있게 된다
+- 쓰레드 1이 락을 걸고 데이터를 가져온다.
+- 이때 쓰레드 2가 락을 획득하려고 하지만, thread 1이 점유중이므로 대기한다
+- 쓰레드 1의 작업이 모두 종료되면 쓰레드 2가 락을 점유할 수 있게 된다
+
+</br>
+
+```java
+public interface StockRepository extends JpaRepository<Stock, Long> {
+
+	@Lock(value = LockModeType.PESSIMISTIC_WRITE)
+	@Query("select s from Stock s where s.id = :id")
+	Stock findByIdWithPessimisticLock(Long id);
+}
+```
+
+```java
+@Service
+public class PessimisticLockStockService {
+
+	private StockRepository stockRepository;
+
+	public PessimisticLockStockService(StockRepository stockRepository) {
+		this.stockRepository = stockRepository;
+	}
+
+	@Transactional
+	public void decrease(Long id, Long quantity){
+		Stock stock = stockRepository.findByIdWithPessimisticLock(id);
+
+		stock.decrease(quantity);
+
+		stockRepository.saveAndFlush(stock);
+	}
+}
+
+```
+
+- native query로 stock을 찾아오는 jpql 작성
+- @Lock(value = LockModeType.PESSIMISTIC_WRITE)로 비관적 락 걸기
+- PessimisticLockStockService 작성
+
+</br>
+
+```java
+@SpringBootTest
+class StockServiceTest {
+
+	@Autowired
+	private PessimisticLockStockService stockService;
+
+	@Autowired
+	private StockRepository stockRepository;
+
+	@BeforeEach
+	void setup(){
+		Stock stock = new Stock(1L, 100L);
+		stockRepository.saveAndFlush(stock);
+	}
+
+	@AfterEach
+	void teardown(){
+		stockRepository.deleteAll();
+	}
+
+	@Test
+	public void 재고감소_확인(){
+		stockService.decrease(1L, 1L);
+
+		// 100 - 1 = 99
+
+		Stock stock = stockRepository.findById(1L).orElseThrow();
+
+		assertThat(stock.getQuantity()).isEqualTo(99L);
+	}
+
+	@Test
+	public void 동시에_100개의_요청() throws InterruptedException {
+		int threadCount = 100;
+		ExecutorService executorService = Executors.newFixedThreadPool(32);
+		CountDownLatch latch = new CountDownLatch(threadCount); // 다른 스레드에서 수행중인 작업이 완료될때까지 대기할 수 있도록 도와주는 클래스
+
+		for (int i = 0 ; i < threadCount; i++){
+			executorService.submit(
+				() -> {
+					try {
+						stockService.decrease(1L, 1L);
+					}
+					finally {
+						latch.countDown();
+					}
+				});
+		}
+		latch.await();
+
+		Stock stock = stockRepository.findById(1L).orElseThrow();
+		assertThat(stock.getQuantity()).isEqualTo(0L);
+	}
+}
+```
+
+- 기존에 작성되어있던 테스트를 실행
+
+</br>
+
+|                                          Pessimistic Lock 테스트 결과 확인 해보기                                          |
+| :------------------------------------------------------------------------------------------------------------------------: |
+| ![Pessimistic Lock 테스트 결과 확인 해보기](../res/../Study_How_To_Solve_Concurrency_Issuses/res/_04_pessimistic_test.png) |
+
+> 데이터 정합성을 보장해주는 것을 확인할 수 있다.
+
+</br>
+
+- Pessmistic Lock 장점
+
+  - 충돌이 자주 일어나는 상황이라면 Optimistic Lock보다 성능이 좋을 수도 있다
+  - Lock을 통해 업데이트를 제어하여 데이터 정합성이 어느정도 보장된다.
+
+- Pessmistic Lock 단점
+  - 별도의 락을 잡기 때문에 성능 감소가 있을 수 있다.
 
 </br>
 
 ### Optimistic Lock 활용해보기
 
 </br>
+
+> 실제로 락을 사용하지 않고 버전을 사용하여 락을 사용하는 것
+
+|                                        예제 그림                                         |
+| :--------------------------------------------------------------------------------------: |
+| ![예제 그림](../res/../Study_How_To_Solve_Concurrency_Issuses/res/_04_optimistic_ex.png) |
+
+- server1과 server2가 version 1 상태인 stock 데이터를 가져간다
+- server1이 update 할 때 version을 2로 만든다
+- 그 후 server2가 update 할 때 version 1인 stock이 없음으로 실패하게 된다
+- 실패 할 경우 애플리케이션에서 다시 읽은 후에 update를 실행하게 된다.
+
+</br>
+
+```java
+public interface StockRepository extends JpaRepository<Stock, Long> {
+	@Lock(value = LockModeType.OPTIMISTIC)
+	@Query("select s from Stock s where s.id = :id")
+	Stock findByIdWithOptimisticLock(Long id);
+}
+```
+
+- @Lock(value = LockModeType.OPTIMISTIC)을 통해 Optimistic Lock
+- native query로 stock을 찾아오는 쿼리 작성
+
+```java
+
+@Entity
+public class Stock {
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
+
+	private Long productId;
+
+	private Long quantity;
+
+	@Version
+	private Long version;
+
+	protected Stock(){}
+
+	public Stock(Long productId, Long quantity) {
+		this.productId = productId;
+		this.quantity = quantity;
+	}
+
+	public Long getQuantity() {
+		return quantity;
+	}
+
+	public void decrease(Long quantity){
+		Assert.isTrue(this.quantity >= quantity, "재고가 부족합니다.");
+		this.quantity -= quantity;
+	}
+}
+```
+
+- Stock의 field에 version 인스턴스 추가
+- @Version 어노테이션 붙이기
+
+```java
+@Service
+public class OptimisticLockStockService {
+
+	private StockRepository stockRepository;
+
+	public OptimisticLockStockService(StockRepository stockRepository) {
+		this.stockRepository = stockRepository;
+	}
+
+	@Transactional
+	public void decrease(Long id, Long quantity){
+		Stock stock = stockRepository.findByIdWithOptimisticLock(id);
+
+		stock.decrease(quantity);
+
+		stockRepository.saveAndFlush(stock);
+	}
+
+}
+```
+
+- OptimisticLockStockService 작성
+
+</br>
+
+```java
+@Service
+public class OptimisticLockStockFacade {
+
+	private OptimisticLockStockService optimisticLockStockService;
+
+	public OptimisticLockStockFacade(OptimisticLockStockService optimisticLockStockService) {
+		this.optimisticLockStockService = optimisticLockStockService;
+	}
+
+	public void decrease(Long id, Long quantity) throws InterruptedException {
+		while (true){
+			try {
+				optimisticLockStockService.decrease(id, quantity);
+				break;
+			}catch (Exception e){
+				Thread.sleep(50);
+			}
+		}
+	}
+}
+```
+
+- 여기서 중요!!!
+  - optimisitic lock은 별도의 락을 걸지 않고 version을 이용한다.
+  - 따라서 update가 실패하는 상황이 발생할 경우 update를 재시도하는 로직을 개발자가 직접 구현해야한다.
+  - 이때 직접 구현한 로직을 담당하는 class가 OptimisticLockStockFacade이다
+
+</br>
+
+```java
+@SpringBootTest
+class OptimisticLockStockFacadeTest {
+
+	@Autowired
+	private OptimisticLockStockFacade stockService;
+
+	@Autowired
+	private StockRepository stockRepository;
+
+	@BeforeEach
+	void setup(){
+		Stock stock = new Stock(1L, 100L);
+		stockRepository.saveAndFlush(stock);
+	}
+
+	@AfterEach
+	void teardown(){
+		stockRepository.deleteAll();
+	}
+
+	@Test
+	public void 동시에_100개의_요청() throws InterruptedException {
+		int threadCount = 100;
+		ExecutorService executorService = Executors.newFixedThreadPool(32);
+		CountDownLatch latch = new CountDownLatch(threadCount); // 다른 스레드에서 수행중인 작업이 완료될때까지 대기할 수 있도록 도와주는 클래스
+
+		for (int i = 0 ; i < threadCount; i++){
+			executorService.submit(
+				() -> {
+					try {
+						stockService.decrease(1L, 1L);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					} finally {
+						latch.countDown();
+					}
+				});
+		}
+		latch.await();
+
+		Stock stock = stockRepository.findById(1L).orElseThrow();
+		assertThat(stock.getQuantity()).isEqualTo(0L);
+	}
+}
+```
+
+- 마지막을 테스트
+
+|                                          Optimisitic Lock 테스트 결과 확인                                          |
+| :-----------------------------------------------------------------------------------------------------------------: |
+| ![Optimisitic Lock 테스트 결과 확인](../res/../Study_How_To_Solve_Concurrency_Issuses/res/_04_optimisitic_test.png) |
+
+</br>
+
+- 별도의 락을 잡지 않음으로 optimistic lock 보다 성능상 이점이 있다.
+- 하지만 update 실패시 재시도 로직을 개발자가 직접 작성해줘야 한다.
+- 또한 충돌이 빈번하게 일어난다면 pessimistic lock이 더 이점이 있을 수 있다.
 
 </br>
 
